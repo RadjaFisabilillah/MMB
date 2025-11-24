@@ -13,13 +13,33 @@ const isOnline = () => typeof navigator !== "undefined" && navigator.onLine;
 
 export default function AbsensiPage() {
   const { user } = useAuth();
+  const [userRole, setUserRole] = useState(null); // BARU: State untuk menyimpan role
   const [status, setStatus] = useState("unknown"); // 'in', 'out', 'loading', 'unknown'
   const [pendingCount, setPendingCount] = useState(0);
   const [message, setMessage] = useState("");
+  const [loadingRole, setLoadingRole] = useState(true); // BARU: Status loading role
 
   // 1. Ambil status absensi saat ini & hitung data pending
   const loadInitialData = useCallback(async () => {
     if (!user) return;
+
+    // --- BARU: Ambil Role Pengguna ---
+    const { data: profile } = await supabase
+      .from("pegawai")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const role = profile?.role;
+    setUserRole(role);
+    setLoadingRole(false);
+
+    // Jika Admin, hentikan logika absensi untuk pegawai
+    if (role === "admin") {
+      setStatus("out");
+      return;
+    }
+    // ---------------------------------
 
     // Hitung data pending
     const pending = await getPendingAbsensi();
@@ -27,7 +47,7 @@ export default function AbsensiPage() {
 
     // Cek status absensi terakhir dari Supabase (Hanya jika online)
     if (isOnline()) {
-      const { data: latestAbsen, error } = await supabase
+      const { data: latestAbsen } = await supabase
         .from("absensi")
         .select("check_in, check_out")
         .eq("pegawai_id", user.id)
@@ -71,17 +91,27 @@ export default function AbsensiPage() {
   // 3. Logika Check-in/Check-out (Offline-First)
   const handleAbsensi = async (type) => {
     // type: 'in' atau 'out'
-    if (!user) {
-      setMessage("Anda harus login terlebih dahulu.");
+    if (!user || userRole === "admin") {
+      // Cegah jika admin
+      setMessage("Operasi absensi dibatasi untuk Admin.");
       return;
     }
 
-    // Ambil store_id dari tabel pegawai (asumsi Anda sudah menyimpannya di context/profil)
-    // Untuk demo, kita hardcode atau ambil dari profil DB
-    const dummyStoreId = "a0000000-0000-0000-0000-000000000001";
+    // Ambil store_id dari tabel pegawai
+    const { data: pegawaiData } = await supabase
+      .from("pegawai")
+      .select("store_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!pegawaiData) {
+      setMessage("Error: ID Toko tidak ditemukan.");
+      return;
+    }
+
     const absenData = {
       pegawai_id: user.id,
-      store_id: dummyStoreId,
+      store_id: pegawaiData.store_id, // Menggunakan store_id dari DB
     };
 
     if (type === "in") {
@@ -89,9 +119,6 @@ export default function AbsensiPage() {
       setStatus("in");
       setMessage("Check-in berhasil diproses.");
     } else {
-      // type === 'out'
-      // Logika bisnis: Cari absen terakhir yang belum Check-out
-      // Untuk Sederhana: Buat entri Check-out baru (idealnya update baris Check-in)
       absenData.check_out = new Date().toISOString();
       setStatus("out");
       setMessage("Check-out berhasil diproses.");
@@ -116,12 +143,56 @@ export default function AbsensiPage() {
     }
   };
 
-  // Tentukan tombol yang akan ditampilkan
+  if (loadingRole) {
+    return (
+      <main
+        className="flex-grow p-4 pt-10 mb-16 text-white text-center"
+        style={{ backgroundColor: "#323232" }}
+      >
+        <p className="text-xl mt-10">Memuat data peran...</p>
+        <BottomNavBar />
+      </main>
+    );
+  }
+
+  // --- CONDITIONAL RENDERING UNTUK ADMIN ---
+  if (userRole === "admin") {
+    return (
+      <main
+        className="flex-grow p-4 pt-10 mb-16 text-white text-center"
+        style={{ backgroundColor: "#323232" }}
+      >
+        <h1 className="text-3xl font-bold" style={{ color: "#FA4EAB" }}>
+          Terminal Absensi
+        </h1>
+        <div
+          className="p-6 rounded-xl shadow-lg space-y-4 mt-8"
+          style={{ backgroundColor: "#1f1f1f" }}
+        >
+          <h2 className="text-xl font-semibold text-white">Akses Dibatasi</h2>
+          <p className="text-gray-400">
+            Sebagai **ADMIN**, Anda tidak diwajibkan untuk melakukan
+            Check-in/Check-out harian.
+          </p>
+          <p className="text-sm text-gray-500">
+            Anda dapat melihat dan memverifikasi data absensi Pegawai melalui
+            halaman Admin.
+          </p>
+        </div>
+        <BottomNavBar />
+      </main>
+    );
+  }
+
+  // --- RENDERING UNTUK PEGAWAI ---
   const buttonAction = status === "out" ? "Check-in" : "Check-out";
   const buttonColor = status === "out" ? "#FA4EAB" : "#3c4043";
 
   return (
-    <main className="flex-grow p-4 pt-10 mb-16 text-white text-center">
+    <main
+      className="flex-grow p-4 pt-10 mb-16 text-white text-center"
+      style={{ backgroundColor: "#323232" }}
+    >
       <h1 className="text-3xl font-bold" style={{ color: "#FA4EAB" }}>
         Terminal Absensi
       </h1>
