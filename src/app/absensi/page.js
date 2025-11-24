@@ -13,17 +13,18 @@ const isOnline = () => typeof navigator !== "undefined" && navigator.onLine;
 
 export default function AbsensiPage() {
   const { user } = useAuth();
-  const [userRole, setUserRole] = useState(null); // BARU: State untuk menyimpan role
+  const [userRole, setUserRole] = useState(null); // State untuk menyimpan role
   const [status, setStatus] = useState("unknown"); // 'in', 'out', 'loading', 'unknown'
   const [pendingCount, setPendingCount] = useState(0);
   const [message, setMessage] = useState("");
-  const [loadingRole, setLoadingRole] = useState(true); // BARU: Status loading role
+  const [loadingRole, setLoadingRole] = useState(true); // Status loading role
 
   // 1. Ambil status absensi saat ini & hitung data pending
   const loadInitialData = useCallback(async () => {
     if (!user) return;
+    setLoadingRole(true);
 
-    // --- BARU: Ambil Role Pengguna ---
+    // --- Ambil Role Pengguna ---
     const { data: profile } = await supabase
       .from("pegawai")
       .select("role")
@@ -39,7 +40,7 @@ export default function AbsensiPage() {
       setStatus("out");
       return;
     }
-    // ---------------------------------
+    // -------------------------
 
     // Hitung data pending
     const pending = await getPendingAbsensi();
@@ -97,21 +98,23 @@ export default function AbsensiPage() {
       return;
     }
 
-    // Ambil store_id dari tabel pegawai
-    const { data: pegawaiData } = await supabase
+    // --- KRITIS FIX: Ambil store_id dari tabel pegawai secara dinamis ---
+    const { data: pegawaiData, error: pegawaiError } = await supabase
       .from("pegawai")
       .select("store_id")
       .eq("id", user.id)
       .single();
 
-    if (!pegawaiData) {
-      setMessage("Error: ID Toko tidak ditemukan.");
+    if (pegawaiError || !pegawaiData) {
+      setMessage("Error: Gagal mendapatkan ID Toko dari profil.");
       return;
     }
+    const storeId = pegawaiData.store_id;
+    // ------------------------------------------------------------------
 
     const absenData = {
       pegawai_id: user.id,
-      store_id: pegawaiData.store_id, // Menggunakan store_id dari DB
+      store_id: storeId, // Menggunakan store_id ASLI dari DB (Fix RLS)
     };
 
     if (type === "in") {
@@ -119,6 +122,8 @@ export default function AbsensiPage() {
       setStatus("in");
       setMessage("Check-in berhasil diproses.");
     } else {
+      // type === 'out'
+      // Untuk Sederhana: Buat entri Check-out baru (idealnya update baris Check-in)
       absenData.check_out = new Date().toISOString();
       setStatus("out");
       setMessage("Check-out berhasil diproses.");
@@ -126,11 +131,14 @@ export default function AbsensiPage() {
 
     if (isOnline()) {
       // Coba kirim langsung
-      const { error } = await supabase.from("absensi").insert([absenData]);
-      if (error) {
-        console.warn("Gagal kirim ke Supabase, menyimpan lokal:", error);
+      const { error: insertError } = await supabase
+        .from("absensi")
+        .insert([absenData]);
+      if (insertError) {
+        console.warn("Gagal kirim ke Supabase, menyimpan lokal:", insertError);
         await addPendingAbsensi(absenData); // Gagal: Simpan lokal
         setPendingCount((prev) => prev + 1);
+        setMessage(`Gagal sinkronisasi online. Data disimpan lokal.`);
       } else {
         setMessage(
           `Absensi ${type === "in" ? "masuk" : "keluar"} berhasil disinkronkan.`
@@ -140,6 +148,9 @@ export default function AbsensiPage() {
       // Offline: Simpan lokal
       await addPendingAbsensi(absenData);
       setPendingCount((prev) => prev + 1);
+      setMessage(
+        "Offline: Absensi dicatat, menunggu koneksi untuk sinkronisasi."
+      );
     }
   };
 
@@ -179,6 +190,12 @@ export default function AbsensiPage() {
             halaman Admin.
           </p>
         </div>
+        {/* Tetap tampilkan pending count jika ada data lama yang belum tersinkronisasi */}
+        {pendingCount > 0 && (
+          <div className="mt-4 p-3 bg-yellow-900 bg-opacity-50 rounded-lg text-yellow-300">
+            ⚠️ **{pendingCount}** data absensi menunggu sinkronisasi (Offline).
+          </div>
+        )}
         <BottomNavBar />
       </main>
     );
