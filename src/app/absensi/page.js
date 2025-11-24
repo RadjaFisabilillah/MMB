@@ -19,10 +19,17 @@ export default function AbsensiPage() {
   const [message, setMessage] = useState("");
   const [loadingRole, setLoadingRole] = useState(true);
 
-  // 1. Ambil status absensi saat ini & hitung data pending
+  // --- NEW STATE FOR STORE SELECTION ---
+  const [stores, setStores] = useState([]);
+  const [selectedStoreId, setSelectedStoreId] = useState(null);
+  const [loadingStores, setLoadingStores] = useState(true);
+  // -------------------------------------
+
+  // 1. Ambil status absensi saat ini, role, dan daftar toko
   const loadInitialData = useCallback(async () => {
     if (!user) return;
     setLoadingRole(true);
+    setLoadingStores(true);
 
     // --- Ambil Role Pengguna ---
     const { data: profile } = await supabase
@@ -38,8 +45,31 @@ export default function AbsensiPage() {
     // Jika Admin, hentikan logika absensi untuk pegawai
     if (role === "admin") {
       setStatus("out");
+      setLoadingStores(false);
       return;
     }
+    // -------------------------
+
+    // --- Ambil Daftar Toko ---
+    // Pastikan tabel 'toko' dapat diakses (RLS READ) oleh pengguna yang login
+    const { data: storesData, error: storesError } = await supabase
+      .from("toko")
+      .select("id, nama"); // Asumsi ada tabel 'toko' dengan kolom 'id' dan 'nama'
+
+    if (storesError) {
+      setMessage("Error memuat daftar toko: " + storesError.message);
+      setLoadingStores(false);
+      return;
+    }
+
+    if (storesData && storesData.length > 0) {
+      setStores(storesData);
+      // Set toko pertama sebagai default
+      setSelectedStoreId(storesData[0].id);
+    } else {
+      setMessage("Tidak ada toko yang terdaftar.");
+    }
+    setLoadingStores(false);
     // -------------------------
 
     // Hitung data pending
@@ -98,24 +128,18 @@ export default function AbsensiPage() {
       return;
     }
 
-    // --- KRITIS FIX: Ambil store_id dari tabel pegawai secara dinamis ---
-    const { data: pegawaiData, error: pegawaiError } = await supabase
-      .from("pegawai")
-      .select("store_id")
-      .eq("id", user.id)
-      .single();
-
-    if (pegawaiError || !pegawaiData) {
-      // Ini akan terjadi jika Pegawai tidak memiliki entri di tabel pegawai (DB error)
-      setMessage("Error: Gagal mendapatkan ID Toko dari profil.");
+    if (!selectedStoreId) {
+      setMessage("Pilih toko terlebih dahulu.");
       return;
     }
-    const storeId = pegawaiData.store_id;
-    // ------------------------------------------------------------------
+
+    // --- Store ID diambil dari state yang dipilih user ---
+    const storeId = selectedStoreId;
+    // -----------------------------------------------------
 
     const absenData = {
       pegawai_id: user.id,
-      store_id: storeId, // Menggunakan store_id ASLI dari DB (Fix RLS)
+      store_id: storeId, // Menggunakan store_id yang dipilih user
     };
 
     if (type === "in") {
@@ -139,7 +163,9 @@ export default function AbsensiPage() {
         console.warn("Gagal kirim ke Supabase, menyimpan lokal:", insertError);
         await addPendingAbsensi(absenData); // Gagal: Simpan lokal
         setPendingCount((prev) => prev + 1);
-        setMessage(`Gagal sinkronisasi online. Data disimpan lokal.`);
+        setMessage(
+          `Gagal sinkronisasi online. Data disimpan lokal. (Kemungkinan RLS error)`
+        );
       } else {
         setMessage(
           `Absensi ${type === "in" ? "masuk" : "keluar"} berhasil disinkronkan.`
@@ -155,13 +181,13 @@ export default function AbsensiPage() {
     }
   };
 
-  if (loadingRole) {
+  if (loadingRole || loadingStores) {
     return (
       <main
         className="flex-grow p-4 pt-10 mb-16 text-white text-center"
         style={{ backgroundColor: "#323232" }}
       >
-        <p className="text-xl mt-10">Memuat data peran...</p>
+        <p className="text-xl mt-10">Memuat data...</p>
         <BottomNavBar />
       </main>
     );
@@ -218,6 +244,37 @@ export default function AbsensiPage() {
         Keandalan Absensi (Offline-First) Aktif.
       </p>
 
+      {/* --- STORE SELECTION UI --- */}
+      <div className="mb-6">
+        <label
+          htmlFor="store-select"
+          className="block text-left text-sm font-medium text-gray-300 mb-1"
+        >
+          Pilih Toko untuk Absensi:
+        </label>
+        <select
+          id="store-select"
+          value={selectedStoreId || ""}
+          onChange={(e) => setSelectedStoreId(e.target.value)}
+          className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-[#FA4EAB] focus:border-[#FA4EAB] sm:text-sm"
+          style={{ backgroundColor: "#1f1f1f", color: "white" }}
+          disabled={stores.length === 0}
+        >
+          {stores.length === 0 && <option value="">Memuat Toko...</option>}
+          {stores.map((store) => (
+            <option key={store.id} value={store.id}>
+              {store.nama}
+            </option>
+          ))}
+        </select>
+        {stores.length === 0 && !loadingStores && (
+          <p className="text-sm text-red-400 mt-1">
+            Tidak ada toko yang tersedia. Harap hubungi Admin.
+          </p>
+        )}
+      </div>
+      {/* --------------------------- */}
+
       <div
         className="p-6 rounded-xl shadow-lg space-y-4"
         style={{ backgroundColor: "#1f1f1f" }}
@@ -243,7 +300,7 @@ export default function AbsensiPage() {
           onClick={() => handleAbsensi(status === "out" ? "in" : "out")}
           className="w-full py-4 rounded-lg font-bold text-white transition-opacity duration-300"
           style={{ backgroundColor: buttonColor }}
-          disabled={status === "loading"}
+          disabled={status === "loading" || !selectedStoreId}
         >
           {buttonAction} Sekarang
         </button>
