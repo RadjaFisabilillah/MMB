@@ -94,6 +94,20 @@ export default function StokListPage() {
           })}
         </div>
       )}
+
+      {/* --- TOMBOL TAMBAH STOK BARU (BARU) --- */}
+      <div className="mt-8">
+        {/* Tombol ini mengarahkan ke halaman form penambahan stok baru */}
+        <Link href="/stok/add">
+          <button
+            className="w-full py-3 rounded-lg font-bold text-white transition-opacity duration-300"
+            style={{ backgroundColor: "#FA4EAB" }}
+          >
+            + Tambah Stok Parfum Baru
+          </button>
+        </Link>
+      </div>
+
       <BottomNavBar />
     </main>
   );
