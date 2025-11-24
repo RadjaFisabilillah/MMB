@@ -1,7 +1,7 @@
 // src/app/profil/page.js
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import BottomNavBar from "@/components/BottomNavBar";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
@@ -12,44 +12,52 @@ export default function ProfilPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (user) {
-      fetchProfile();
-    } else {
+  const fetchProfile = useCallback(async () => {
+    if (!user) {
       setLoading(false);
+      return;
     }
-  }, [user]);
 
-  const fetchProfile = async () => {
     setLoading(true);
     setError(null);
 
-    // Ambil data dari tabel 'pegawai' dan join ke tabel 'toko'
+    // Ambil data dari tabel 'pegawai'.
+    // Menggunakan sintaks 'toko:store_id' untuk lebih eksplisit dalam join ke tabel 'toko'.
     const { data, error } = await supabase
       .from("pegawai")
       .select(
         `
         nama, 
         role, 
-        toko (nama)
+        toko:store_id (nama) 
       `
       )
       .eq("id", user.id)
       .single();
 
     if (error) {
-      console.error("Gagal memuat profil:", error);
-      setError(error.message);
+      // Menangkap error umum dari PostgREST/Supabase
+      console.error("Gagal memuat profil (DB Error):", error);
+      setError(`Error memuat data profil: ${error.message}`);
+    } else if (data === null) {
+      // Kasus KRITIS: Pengguna ada di Auth, tetapi tidak ada entri di tabel 'pegawai'
+      setError(
+        "Error: Profil Pegawai tidak ditemukan. Anda mungkin perlu INSERT data profil secara manual di database."
+      );
     } else if (data) {
       setProfile({
         nama: data.nama,
         role: data.role,
-        toko: data.toko.nama,
-        email: user.email, // Ambil email dari Auth object
+        toko: data.toko.nama, // Menggunakan alias 'toko'
+        email: user.email,
       });
     }
     setLoading(false);
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
 
   // Fungsi pembantu untuk menentukan warna role
   const getRoleColor = (role) => {
@@ -78,9 +86,12 @@ export default function ProfilPage() {
         <h1 className="text-3xl font-bold" style={{ color: "#FA4EAB" }}>
           Profil Pengguna
         </h1>
-        <p className="text-red-500 mt-4">
-          Error memuat data profil: {error || "Data tidak ditemukan."}
-        </p>
+        {error && <p className="text-red-500 mt-4">{error}</p>}
+        {!error && (
+          <p className="text-red-500 mt-4">
+            Data profil tidak lengkap atau tidak ditemukan.
+          </p>
+        )}
         <BottomNavBar />
       </main>
     );
