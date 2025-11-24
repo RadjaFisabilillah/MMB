@@ -13,11 +13,11 @@ const isOnline = () => typeof navigator !== "undefined" && navigator.onLine;
 
 export default function AbsensiPage() {
   const { user } = useAuth();
-  const [userRole, setUserRole] = useState(null); // State untuk menyimpan role
-  const [status, setStatus] = useState("unknown"); // 'in', 'out', 'loading', 'unknown'
+  const [userRole, setUserRole] = useState(null);
+  const [status, setStatus] = useState("unknown");
   const [pendingCount, setPendingCount] = useState(0);
   const [message, setMessage] = useState("");
-  const [loadingRole, setLoadingRole] = useState(true); // Status loading role
+  const [loadingRole, setLoadingRole] = useState(true);
 
   // 1. Ambil status absensi saat ini & hitung data pending
   const loadInitialData = useCallback(async () => {
@@ -106,6 +106,7 @@ export default function AbsensiPage() {
       .single();
 
     if (pegawaiError || !pegawaiData) {
+      // Ini akan terjadi jika Pegawai tidak memiliki entri di tabel pegawai (DB error)
       setMessage("Error: Gagal mendapatkan ID Toko dari profil.");
       return;
     }
@@ -168,6 +169,7 @@ export default function AbsensiPage() {
 
   // --- CONDITIONAL RENDERING UNTUK ADMIN ---
   if (userRole === "admin") {
+    // Logika Admin tidak perlu Check-in/Check-out
     return (
       <main
         className="flex-grow p-4 pt-10 mb-16 text-white text-center"
@@ -190,7 +192,6 @@ export default function AbsensiPage() {
             halaman Admin.
           </p>
         </div>
-        {/* Tetap tampilkan pending count jika ada data lama yang belum tersinkronisasi */}
         {pendingCount > 0 && (
           <div className="mt-4 p-3 bg-yellow-900 bg-opacity-50 rounded-lg text-yellow-300">
             ⚠️ **{pendingCount}** data absensi menunggu sinkronisasi (Offline).
