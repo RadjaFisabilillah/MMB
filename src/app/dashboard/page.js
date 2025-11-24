@@ -1,19 +1,110 @@
 // src/app/dashboard/page.js
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
 import BottomNavBar from "@/components/BottomNavBar";
 import { useAuth } from "@/components/AuthProvider";
+import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
-// Halaman Server/Komponen Statis Sederhana untuk Boilerplate
 export default function DashboardPage() {
-  const { user } = {}; // Gunakan useAuth jika ini adalah Client Component
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({
+    role: "Memuat...",
+    totalPenjualan: 0,
+    statusAbsensi: "N/A",
+    stokKritis: 0,
+  });
+
+  const fetchDashboardData = useCallback(async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // Asumsi: Kita hanya akan mengambil data Penjualan dan Stok Kritis
+    // jika user sudah lolos autentikasi.
+
+    // 1. Ambil Role Pegawai (Role & Nama)
+    const { data: profile, error: profileError } = await supabase
+      .from("pegawai")
+      .select("role, nama")
+      .eq("id", user.id)
+      .single();
+
+    const userRole = profile?.role || "Pegawai";
+    const userName = profile?.nama || "Pengguna";
+
+    // 2. Ambil Total Penjualan Hari Ini
+    const today = new Date().toISOString().split("T")[0];
+    const { data: penjualanData, error: penjualanError } = await supabase
+      .from("laporan_penjualan")
+      .select("harga_total")
+      .gte("tanggal_penjualan", today);
+
+    const totalPenjualan =
+      penjualanData?.reduce((sum, item) => sum + item.harga_total, 0) || 0;
+
+    // 3. Cek Status Absensi (Sederhana: Cek entry terakhir)
+    let currentAbsensiStatus = "Belum Check-in";
+    const { data: latestAbsen } = await supabase
+      .from("absensi")
+      .select("check_in, check_out")
+      .eq("pegawai_id", user.id)
+      .order("dibuat_pada", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (latestAbsen && latestAbsen.check_in && !latestAbsen.check_out) {
+      currentAbsensiStatus = "Sedang Check-in";
+    } else if (latestAbsen && latestAbsen.check_in && latestAbsen.check_out) {
+      currentAbsensiStatus = "Sudah Check-out";
+    }
+
+    // 4. Hitung Stok Kritis (DoS <= 7)
+    // Asumsi kolom calculated_dos dihitung oleh DB
+    const { count: kritisCount, error: kritisError } = await supabase
+      .from("stok_toko")
+      .select("id", { count: "exact", head: true })
+      .lte("calculated_dos", 7);
+
+    setSummary({
+      role: userRole,
+      userName: userName,
+      totalPenjualan: totalPenjualan,
+      statusAbsensi: currentAbsensiStatus,
+      stokKritis: kritisCount || 0,
+    });
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const formatRupiah = (number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(number);
+  };
 
   return (
-    <main className="flex-grow p-4 pt-10 mb-16 text-white">
+    <main
+      className="flex-grow p-4 pt-10 mb-16 text-white"
+      style={{ backgroundColor: "#323232" }}
+    >
       <h1 className="text-3xl font-bold" style={{ color: "#FA4EAB" }}>
-        👋 Selamat Datang!
+        👋 Selamat Datang, {summary.userName}!
       </h1>
-      <p className="text-lg mt-2">Ini adalah Dashboard **MMB** Anda.</p>
+      <p className="text-lg mt-2">
+        Dashboard **MMB** ({loading ? "Memuat..." : summary.role})
+      </p>
 
       <div className="mt-8 space-y-4">
+        {/* Ringkasan Hari Ini */}
         <section
           className="p-4 rounded-lg"
           style={{ backgroundColor: "#1f1f1f" }}
@@ -24,26 +115,75 @@ export default function DashboardPage() {
           >
             Ringkasan Hari Ini
           </h2>
-          <p>Total Penjualan: - (Integrasi Laporan)</p>
-          <p>Status Absensi: - (Integrasi Absensi)</p>
+          {loading ? (
+            <p className="text-gray-400">Memuat data...</p>
+          ) : (
+            <>
+              <p className="mt-2 text-lg">
+                Total Penjualan:{" "}
+                <span className="font-bold">
+                  {formatRupiah(summary.totalPenjualan)}
+                </span>
+              </p>
+              <p className="text-lg">
+                Status Absensi:{" "}
+                <span
+                  className={`font-bold ${
+                    summary.statusAbsensi.includes("Check-in")
+                      ? "text-green-400"
+                      : "text-gray-400"
+                  }`}
+                >
+                  {summary.statusAbsensi}
+                </span>
+              </p>
+            </>
+          )}
         </section>
 
+        {/* Peringatan Stok Kritis */}
         <section
-          className="p-4 rounded-lg"
+          className={`p-4 rounded-lg border-2 ${
+            summary.stokKritis > 0 ? "border-red-600" : "border-gray-700"
+          }`}
           style={{ backgroundColor: "#1f1f1f" }}
         >
           <h2
             className="text-xl font-semibold mb-2"
-            style={{ color: "#FA4EAB" }}
+            style={{ color: summary.stokKritis > 0 ? "red" : "#FA4EAB" }}
           >
-            Peringatan Stok Kritis
+            🚨 Peringatan Stok Kritis
           </h2>
-          <p>Item Kritis (DoS &lt; 7 hari): - (Integrasi Stok)</p>
+          {loading ? (
+            <p className="text-gray-400">Memuat...</p>
+          ) : (
+            <p className="text-lg">
+              Item Kritis (DoS ≤ 7 hari):
+              <span
+                className="font-bold text-2xl"
+                style={{ color: summary.stokKritis > 0 ? "red" : "green" }}
+              >
+                {" "}
+                {summary.stokKritis}
+              </span>{" "}
+              item.
+              {summary.stokKritis > 0 && (
+                <Link
+                  href="/stok"
+                  className="text-sm ml-2 underline"
+                  style={{ color: "#FA4EAB" }}
+                >
+                  (Lihat Stok)
+                </Link>
+              )}
+            </p>
+          )}
         </section>
       </div>
 
       <p className="mt-10 text-sm text-gray-400">
-        Peran Anda: {user ? "Dimuat..." : "Pegawai/Admin"}
+        Peran Anda:{" "}
+        <span className="font-semibold uppercase">{summary.role}</span>
       </p>
 
       <BottomNavBar />
