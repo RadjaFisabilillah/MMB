@@ -58,8 +58,9 @@ export default function BottomNavBar() {
     if (profile) {
       setUserRole(profile.role);
     } else {
-      // Fallback jika profil tidak ditemukan (Admin Global tanpa toko)
-      setUserRole("admin");
+      // Fallback defensif: Jika profil tidak ditemukan, anggap sebagai Pegawai default
+      // Ini mencegah crash saat navigasi Admin dimuat
+      setUserRole("pegawai");
     }
     setLoadingRole(false);
   }, [user]);
@@ -72,10 +73,13 @@ export default function BottomNavBar() {
   const finalNavItems = userRole === "admin" ? navItemsAdmin : navItemsPegawai;
 
   // Jangan merender apapun jika masih memuat data peran
-  if (loadingRole || !user) {
-    // Kita hanya tampilkan navbar jika sudah ada user dan role telah dimuat,
-    // atau jika tidak ada user sama sekali (supaya tidak crash saat loading)
-    if (!user) return null;
+  if (loadingRole) {
+    return null;
+  }
+
+  // Jangan merender jika tidak ada user
+  if (!user) {
+    return null;
   }
 
   return (
@@ -85,13 +89,19 @@ export default function BottomNavBar() {
     >
       {finalNavItems.map((item) => {
         // Logika untuk menentukan tombol aktif
+        // Menggunakan pathname.startsWith untuk rute Admin/verifikasi-izin/page.js
         const isActive =
           pathname.startsWith(item.href) &&
           (item.href !== "/dashboard" || pathname === "/dashboard");
-        const IconComponent = item.icon; // Pastikan ini adalah komponen React yang valid
+        const IconComponent = item.icon;
 
-        // Cek defensif: Jangan render jika komponen ikon tidak terdefinisi
-        if (!IconComponent) return null;
+        // ✅ PERBAIKAN KRITIS: Check defensif untuk mencegah React Error #300
+        if (typeof IconComponent !== "function") {
+          console.error(
+            `Ikon untuk rute ${item.href} tidak ditemukan atau bukan komponen React.`
+          );
+          return null; // Hindari crash dengan merender null
+        }
 
         return (
           <Link href={item.href} key={item.href} className="flex-1 text-center">
