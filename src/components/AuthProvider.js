@@ -43,10 +43,9 @@ export const AuthProvider = ({ children }) => {
         setUser(currentUser);
         setLoading(false);
 
-        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-          // Navigasi ke dashboard setelah login/refresh token
-          router.push("/dashboard");
-        } else if (event === "SIGNED_OUT") {
+        // ✅ PERBAIKAN: Hapus logika router.push("/dashboard") dari sini.
+        // Biarkan src/app/page.js dan Middleware yang menangani redirect ke dashboard.
+        if (event === "SIGNED_OUT") {
           // Navigasi ke halaman login setelah logout
           router.push("/");
         }
@@ -54,9 +53,7 @@ export const AuthProvider = ({ children }) => {
     );
 
     // --- LOGIKA LOGOUT PAKSA SAAT MENUTUP TAB (PERMINTAAN PENGGUNA) ---
-    // Peringatan: Ini tidak 100% andal di semua browser.
     const handleBeforeUnload = async () => {
-      // Memanggil fungsi logout
       await supabase.auth.signOut();
     };
 
