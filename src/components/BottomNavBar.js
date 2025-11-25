@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
-// Import ikon yang dibutuhkan. Pastikan Anda telah menginstal 'react-icons'.
+// Import ikon yang dibutuhkan
 import {
   FaHome,
   FaBox,
@@ -19,17 +19,20 @@ import { supabase } from "@/lib/supabaseClient";
 
 // Definisi item navigasi dasar untuk Pegawai
 const navItemsPegawai = [
-  { href: "/dashboard", icon: FaHome, label: "Dashboard" },
+  { href: "/dashboard", icon: FaHome, label: "Dash" },
+  { href: "/absensi", icon: FaClock, label: "Absen" },
   { href: "/stok", icon: FaBox, label: "Stok" },
   { href: "/laporan", icon: FaFileAlt, label: "Laporan" },
-  { href: "/absensi", icon: FaClock, label: "Absensi" },
   { href: "/profil", icon: FaUser, label: "Profil" },
 ];
 
-// Definisi item navigasi khusus Admin
-const adminItems = [
+// Definisi item navigasi khusus Admin (mengganti Absen dan Stok)
+const navItemsAdmin = [
+  { href: "/dashboard", icon: FaHome, label: "Dash" },
   { href: "/admin/verifikasi-izin", icon: FaCheckCircle, label: "Verif. Izin" },
   { href: "/admin/add-toko", icon: FaStore, label: "Tambah Toko" },
+  { href: "/laporan", icon: FaFileAlt, label: "Laporan" },
+  { href: "/profil", icon: FaUser, label: "Profil" },
 ];
 
 export default function BottomNavBar() {
@@ -55,58 +58,63 @@ export default function BottomNavBar() {
     if (profile) {
       setUserRole(profile.role);
     } else {
-      // Jika profil tidak ditemukan, anggap sebagai peran 'unknown'
-      setUserRole("unknown");
+      // Fallback jika profil tidak ditemukan (Admin Global tanpa toko)
+      setUserRole("admin");
     }
     setLoadingRole(false);
   }, [user]);
 
   useEffect(() => {
-    // Jalankan fungsi pengambilan peran saat komponen dimuat atau user berubah
     fetchUserRole();
   }, [fetchUserRole]);
 
   // Tentukan item navigasi akhir berdasarkan peran
-  let finalNavItems = navItemsPegawai;
+  const finalNavItems = userRole === "admin" ? navItemsAdmin : navItemsPegawai;
 
-  if (userRole === "admin" && !loadingRole) {
-    // Jika Admin, susun ulang menu (mempertahankan 5 item)
-    finalNavItems = [
-      navItemsPegawai.find((item) => item.href === "/dashboard"), // Dashboard
-      adminItems[0], // Verif. Izin
-      adminItems[1], // Tambah Toko
-      navItemsPegawai.find((item) => item.href === "/laporan"), // Laporan
-      navItemsPegawai.find((item) => item.href === "/profil"), // Profil
-    ].filter(Boolean); // Filter untuk memastikan item-item yang dicari ada
-  } else if (userRole === null || loadingRole) {
-    // Jika masih memuat atau tidak ada user, gunakan item default (atau kosongkan jika perlu)
-    // Kita biarkan default navItemsPegawai sebagai fallback untuk menghindari FOUC.
+  // Jangan merender apapun jika masih memuat data peran
+  if (loadingRole || !user) {
+    // Kita hanya tampilkan navbar jika sudah ada user dan role telah dimuat,
+    // atau jika tidak ada user sama sekali (supaya tidak crash saat loading)
+    if (!user) return null;
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 h-16 bg-gray-800 text-white shadow-lg z-50">
-      <div className="flex justify-around items-center h-full max-w-xl mx-auto">
-        {finalNavItems.map((item) => {
-          const isActive = pathname === item.href;
-          const IconComponent = item.icon;
+    <nav
+      className="fixed bottom-0 left-0 right-0 h-16 shadow-lg flex justify-around items-center z-50"
+      style={{ backgroundColor: "#323232" }}
+    >
+      {finalNavItems.map((item) => {
+        // Logika untuk menentukan tombol aktif
+        const isActive =
+          pathname.startsWith(item.href) &&
+          (item.href !== "/dashboard" || pathname === "/dashboard");
+        const IconComponent = item.icon; // Pastikan ini adalah komponen React yang valid
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-col items-center justify-center p-1 transition-colors duration-200 ${
-                isActive ? "text-red-500" : "text-gray-400 hover:text-white"
+        // Cek defensif: Jangan render jika komponen ikon tidak terdefinisi
+        if (!IconComponent) return null;
+
+        return (
+          <Link href={item.href} key={item.href} className="flex-1 text-center">
+            <div
+              className={`flex flex-col items-center justify-center p-2 transition-colors duration-200 ${
+                isActive ? "text-white border-b-2" : "text-gray-400"
               }`}
-              style={{ minWidth: "18%", maxWidth: "20%" }}
+              style={{
+                borderColor: isActive ? "#FA4EAB" : "transparent",
+              }}
             >
-              <IconComponent className="w-6 h-6" />
-              <span className="text-xs mt-1 text-center leading-none">
+              {/* Render komponen ikon */}
+              <IconComponent className="text-2xl" />
+              <span
+                className="text-xs font-medium"
+                style={{ color: isActive ? "#FA4EAB" : "#FFFFFF" }}
+              >
                 {item.label}
               </span>
-            </Link>
-          );
-        })}
-      </div>
+            </div>
+          </Link>
+        );
+      })}
     </nav>
   );
 }

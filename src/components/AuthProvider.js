@@ -40,7 +40,6 @@ export const AuthProvider = ({ children }) => {
         setUser(currentUser);
         setLoading(false);
 
-        // ✅ PERBAIKAN: Hapus logika router.push("/dashboard") di sini.
         // Hanya tangani SIGNED_OUT, biarkan page.js yang memicu redirect SIGNED_IN.
         if (event === "SIGNED_OUT") {
           router.push("/");
@@ -69,13 +68,13 @@ export const AuthProvider = ({ children }) => {
   }, [router, getInitialSession]);
 
   const login = async (email, password) => {
-    // FIX: login() di sini tidak melakukan redirect.
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    // Mengembalikan data auth untuk diproses di halaman Login
-    return { data: { user: supabase.auth.getUser()?.user }, error };
+    // Mengambil user setelah sign in, jika berhasil
+    const { data: userData } = await supabase.auth.getUser();
+    return { data: { user: userData.user }, error };
   };
 
   const signOut = async () => {
