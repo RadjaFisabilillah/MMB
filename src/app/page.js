@@ -13,26 +13,23 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState("pegawai");
+  const [selectedRole, setSelectedRole] = useState("pegawai"); // Default Pegawai
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [isRedirecting, setIsRedirecting] = useState(false); // ✅ State baru untuk kontrol redirect
 
   const isPegawaiLogin = selectedRole === "pegawai";
 
-  // 1. Tampilkan pesan redirect saat user sudah ada
-  // Kita biarkan Middleware yang menangani redirect
-  if (user) {
-    return (
-      <main
-        className="flex min-h-screen items-center justify-center p-24"
-        style={{ backgroundColor: "#323232" }}
-      >
-        <p className="text-white">Mengarahkan ke Dashboard...</p>
-      </main>
-    );
-  }
+  // 1. Initial Redirect Check
+  useEffect(() => {
+    if (user && !isRedirecting) {
+      // Jika sudah terautentikasi dan belum dalam proses redirect dari form, langsung redirect.
+      setIsRedirecting(true);
+      router.replace("/dashboard");
+    }
+  }, [user, router, isRedirecting]);
 
   // 2. Fetch Daftar Toko untuk Pegawai Dropdown
   const fetchStores = useCallback(async () => {
@@ -43,7 +40,7 @@ export default function LoginPage() {
 
     if (!error && data && data.length > 0) {
       setStores(data);
-      setSelectedStoreId(data[0].id);
+      setSelectedStoreId(data[0].id); // Set default toko
     } else if (error) {
       console.error("Gagal memuat toko:", error);
     }
@@ -75,7 +72,7 @@ export default function LoginPage() {
     }
 
     // Verifikasi Auth Sukses, sekarang Cek/Update Role dan Store
-    const sessionUser = (await supabase.auth.getUser()).data.user; // Ambil user yang baru login
+    const sessionUser = (await supabase.auth.getUser()).data.user;
     const userId = sessionUser?.id;
 
     if (userId) {
@@ -99,6 +96,7 @@ export default function LoginPage() {
       } else {
         // Lakukan Update Store ID hanya jika login sebagai Pegawai
         if (isPegawaiLogin) {
+          // Update tabel Pegawai dengan store_id yang dipilih
           const { error: updateError } = await supabase
             .from("pegawai")
             .update({ store_id: selectedStoreId })
@@ -112,14 +110,26 @@ export default function LoginPage() {
           }
         }
 
-        // ✅ PERBAIKAN KRITIS: Redirect secara eksplisit setelah semua verifikasi sukses
-        setLoading(false); // Pastikan loading dimatikan sebelum redirect
-        router.replace("/dashboard");
-        return; // Hentikan eksekusi
+        // ✅ PERBAIKAN KRITIS: Set state redirect dan biarkan useEffect mengambil alih.
+        setLoading(false);
+        setIsRedirecting(true);
+        return;
       }
     }
     setLoading(false);
   };
+
+  // Render Redirection Message jika user sudah ada atau proses redirect baru dimulai
+  if (user || loading || isRedirecting) {
+    return (
+      <main
+        className="flex min-h-screen items-center justify-center p-24"
+        style={{ backgroundColor: "#323232" }}
+      >
+        <p className="text-white">Mengarahkan ke Dashboard...</p>
+      </main>
+    );
+  }
 
   return (
     <main

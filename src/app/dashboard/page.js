@@ -11,8 +11,8 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({
-    role: "Memuat...", // Kita akan gunakan ini sebagai state sementara
-    userName: "Pengguna", // Default
+    role: null, // ✅ Dibuat null agar BottomNavBar tahu ini sedang loading
+    userName: "Pengguna",
     totalPenjualan: 0,
     statusAbsensi: "N/A",
     stokKritis: 0,
@@ -31,7 +31,7 @@ export default function DashboardPage() {
       .eq("id", user.id)
       .single();
 
-    const userRole = profile?.role || "Pegawai";
+    const userRole = profile?.role || "pegawai"; // Pastikan selalu ada string role
     const userName = profile?.nama || "Pengguna";
 
     // Cek apakah pengguna adalah Pegawai atau Admin
@@ -42,9 +42,9 @@ export default function DashboardPage() {
     let currentAbsensiStatus = "Tidak Berlaku (Admin)";
 
     if (isPegawai) {
-      // 2. Ambil Total Penjualan Hari Ini (HANYA PEGAWAI)
+      // 2-4. Logic for Pegawai... (Unchanged)
       const today = new Date().toISOString().split("T")[0];
-      const { data: penjualanData, error: penjualanError } = await supabase
+      const { data: penjualanData } = await supabase
         .from("laporan_penjualan")
         .select("harga_total")
         .gte("tanggal_penjualan", today);
@@ -52,7 +52,6 @@ export default function DashboardPage() {
       totalPenjualan =
         penjualanData?.reduce((sum, item) => sum + item.harga_total, 0) || 0;
 
-      // 3. Cek Status Absensi (HANYA PEGAWAI)
       currentAbsensiStatus = "Belum Check-in";
       const { data: latestAbsen } = await supabase
         .from("absensi")
@@ -68,8 +67,7 @@ export default function DashboardPage() {
         currentAbsensiStatus = "Sudah Check-out";
       }
 
-      // 4. Hitung Stok Kritis (DoS <= 7) (HANYA PEGAWAI)
-      const { count: countPegawai, error: kritisError } = await supabase
+      const { count: countPegawai } = await supabase
         .from("stok_toko")
         .select("id", { count: "exact", head: true })
         .lte("calculated_dos", 7);
@@ -78,7 +76,7 @@ export default function DashboardPage() {
     }
 
     setSummary({
-      role: userRole, // ✅ Sekarang role selalu ada
+      role: userRole,
       userName: userName,
       totalPenjualan: totalPenjualan,
       statusAbsensi: currentAbsensiStatus,
@@ -194,7 +192,7 @@ export default function DashboardPage() {
         <span className="font-semibold uppercase">{summary.role}</span>
       </p>
 
-      {/* ✅ PERBAIKAN: Mengirim role dan status loading ke BottomNavBar */}
+      {/* Mengirim role dan status loading ke BottomNavBar */}
       <BottomNavBar userRole={summary.role} loadingRole={loading} />
     </main>
   );

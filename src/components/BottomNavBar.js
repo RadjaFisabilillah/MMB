@@ -31,17 +31,17 @@ const navItemsAdmin = [
   { href: "/profil", icon: FaUser, label: "Profil" },
 ];
 
-// ✅ PERUBAHAN: Menerima userRole dan loadingRole sebagai props
+// ✅ PERUBAHAN: Menerima userRole dan loadingRole sebagai props, tanpa logika fetch
 export default function BottomNavBar({ userRole, loadingRole }) {
   const pathname = usePathname();
 
-  // Tentukan item navigasi akhir berdasarkan peran yang diterima
-  const finalNavItems = userRole === "admin" ? navItemsAdmin : navItemsPegawai;
-
-  // Jangan merender apapun jika masih memuat data peran
-  if (loadingRole || !userRole) {
+  // Pemeriksaan Defensif: Jangan merender jika masih loading atau role tidak teridentifikasi.
+  if (loadingRole || typeof userRole !== "string") {
     return null;
   }
+
+  // Tentukan item navigasi akhir berdasarkan peran yang diterima
+  const finalNavItems = userRole === "admin" ? navItemsAdmin : navItemsPegawai;
 
   return (
     <nav
@@ -55,7 +55,7 @@ export default function BottomNavBar({ userRole, loadingRole }) {
           (item.href !== "/dashboard" || pathname === "/dashboard");
         const IconComponent = item.icon;
 
-        // Pemeriksaan defensif masih diperlukan, meskipun crash seharusnya hilang
+        // Pemeriksaan defensif untuk mencegah React Error #300
         if (typeof IconComponent !== "function") return null;
 
         return (
