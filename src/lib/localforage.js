@@ -1,15 +1,18 @@
 // src/lib/localforage.js
 import localforage from "localforage";
 
-// Konfigurasi LocalForage (IndexedDB)
-localforage.config({
-  driver: localforage.INDEXEDDB,
-  name: "MMB_PWA_Store",
-  version: 1.0,
-  storeName: "mmb_offline_data",
-  description:
-    "Penyimpanan data absensi dan penjualan yang tertunda sinkronisasi",
-});
+// ⚠️ FIX KRITIS: Pastikan kode ini hanya berjalan di browser
+if (typeof window !== "undefined") {
+  // Konfigurasi LocalForage (IndexedDB) hanya jika di browser
+  localforage.config({
+    driver: localforage.INDEXEDDB,
+    name: "MMB_PWA_Store",
+    version: 1.0,
+    storeName: "mmb_offline_data",
+    description:
+      "Penyimpanan data absensi dan penjualan yang tertunda sinkronisasi",
+  });
+}
 
 const ABSENSI_KEY = "pending_absensi";
 const PENJUALAN_KEY = "pending_penjualan";
@@ -21,6 +24,8 @@ const PENJUALAN_KEY = "pending_penjualan";
  */
 export async function getPendingAbsensi() {
   try {
+    // localforage akan menjadi undefined di server, tetapi ini hanya dipanggil
+    // dari client component, sehingga aman.
     return (await localforage.getItem(ABSENSI_KEY)) || [];
   } catch (error) {
     console.error("Gagal mengambil absensi tertunda:", error);
@@ -30,7 +35,6 @@ export async function getPendingAbsensi() {
 
 /**
  * Menambahkan data absensi baru ke antrian tertunda.
- * @param {object} absensiData - Data absensi (pegawai_id, store_id, check_in/check_out)
  */
 export async function addPendingAbsensi(absensiData) {
   const pendingList = await getPendingAbsensi();
@@ -67,7 +71,6 @@ export async function getPendingPenjualan() {
 
 /**
  * Menambahkan data penjualan baru ke antrian tertunda.
- * @param {object} saleData - Data penjualan
  */
 export async function addPendingPenjualan(saleData) {
   const pendingList = await getPendingPenjualan();
