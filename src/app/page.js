@@ -8,7 +8,8 @@ import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
 export default function LoginPage() {
-  const { user, login } = useAuth();
+  // ✅ Mengambil user dan status loading dari AuthProvider
+  const { user, loading: authLoading, login } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -16,24 +17,17 @@ export default function LoginPage() {
   const [selectedRole, setSelectedRole] = useState("pegawai"); // Default Pegawai
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // Loading untuk form submission
   const [message, setMessage] = useState("");
 
   const isPegawaiLogin = selectedRole === "pegawai";
 
-  // ✅ PERBAIKAN KRITIS: Sinkronisasi Redirect. Jika user ada, segera ganti rute.
-  if (user) {
-    // router.replace() di luar useEffect akan dieksekusi secara sinkron
-    router.replace("/dashboard");
-    return (
-      <main
-        className="flex min-h-screen items-center justify-center p-24"
-        style={{ backgroundColor: "#323232" }}
-      >
-        <p className="text-white">Mengarahkan ke Dashboard...</p>
-      </main>
-    );
-  }
+  // 1. Redirect jika user sudah login DAN AuthProvider sudah selesai loading. (Pola Paling Stabil)
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace("/dashboard");
+    }
+  }, [user, authLoading, router]);
 
   // 2. Fetch Daftar Toko untuk Pegawai Dropdown
   const fetchStores = useCallback(async () => {
@@ -76,7 +70,6 @@ export default function LoginPage() {
     }
 
     // Verifikasi Auth Sukses, sekarang Cek/Update Role dan Store
-    // Ambil user dari Supabase Auth secara langsung
     const sessionUser = (await supabase.auth.getUser()).data.user;
     const userId = sessionUser?.id;
 
@@ -115,15 +108,29 @@ export default function LoginPage() {
           }
         }
 
-        // Sukses: Sesi diperbarui. Render loop berikutnya akan memicu if (user) di atas.
+        // Sukses: Sesi diperbarui. useEffect di atas akan menangani redirect.
         setLoading(false);
-        // Karena kita sudah memanggil router.replace di awal komponen, tidak perlu lagi di sini.
         return;
       }
     }
     setLoading(false);
   };
 
+  // --- RENDER BLOCK ---
+
+  // 1. Tampilkan pesan memuat saat AuthProvider sedang bekerja (atau user sudah ada)
+  if (authLoading || user) {
+    return (
+      <main
+        className="flex min-h-screen items-center justify-center p-24"
+        style={{ backgroundColor: "#323232" }}
+      >
+        <p className="text-white">Mengarahkan ke Dashboard...</p>
+      </main>
+    );
+  }
+
+  // 2. Tampilkan form login (hanya jika loading selesai DAN user TIDAK ada)
   return (
     <main
       className="flex min-h-screen flex-col items-center justify-center p-4"

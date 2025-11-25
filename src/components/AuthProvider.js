@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
         setUser(currentUser);
         setLoading(false);
 
-        // Hanya tangani SIGNED_OUT, biarkan page.js yang memicu redirect SIGNED_IN.
+        // Hanya tangani SIGNED_OUT
         if (event === "SIGNED_OUT") {
           router.push("/");
         }
