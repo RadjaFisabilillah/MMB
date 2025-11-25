@@ -48,7 +48,7 @@ export default function ProfilPage() {
       setProfile({
         nama: data.nama,
         role: data.role,
-        toko: data.toko.nama, // Menggunakan alias 'toko'
+        toko: data.toko?.nama || "Tidak Terikat Toko (Admin Global)", // ✅ PERBAIKAN: Menggunakan optional chaining (?.) untuk menangani toko null
         email: user.email,
       });
     }

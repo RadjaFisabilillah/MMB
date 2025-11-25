@@ -23,11 +23,8 @@ export default function DashboardPage() {
       return;
     }
 
-    // Asumsi: Kita hanya akan mengambil data Penjualan dan Stok Kritis
-    // jika user sudah lolos autentikasi.
-
     // 1. Ambil Role Pegawai (Role & Nama)
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from("pegawai")
       .select("role, nama")
       .eq("id", user.id)
@@ -36,45 +33,57 @@ export default function DashboardPage() {
     const userRole = profile?.role || "Pegawai";
     const userName = profile?.nama || "Pengguna";
 
-    // 2. Ambil Total Penjualan Hari Ini
-    const today = new Date().toISOString().split("T")[0];
-    const { data: penjualanData, error: penjualanError } = await supabase
-      .from("laporan_penjualan")
-      .select("harga_total")
-      .gte("tanggal_penjualan", today);
+    // Cek apakah pengguna adalah Pegawai atau Admin
+    const isPegawai = userRole !== "admin"; // ✅ LOGIKA PERBAIKAN: Admin tidak menjalankan kueri RLS-sensitif
 
-    const totalPenjualan =
-      penjualanData?.reduce((sum, item) => sum + item.harga_total, 0) || 0;
+    let totalPenjualan = 0;
+    let kritisCount = 0;
+    let currentAbsensiStatus = "Tidak Berlaku (Admin)"; // Default untuk Admin
 
-    // 3. Cek Status Absensi (Sederhana: Cek entry terakhir)
-    let currentAbsensiStatus = "Belum Check-in";
-    const { data: latestAbsen } = await supabase
-      .from("absensi")
-      .select("check_in, check_out")
-      .eq("pegawai_id", user.id)
-      .order("dibuat_pada", { ascending: false })
-      .limit(1)
-      .single();
+    if (isPegawai) {
+      // 2. Ambil Total Penjualan Hari Ini (HANYA PEGAWAI)
+      const today = new Date().toISOString().split("T")[0];
+      const { data: penjualanData, error: penjualanError } = await supabase
+        .from("laporan_penjualan")
+        .select("harga_total")
+        .gte("tanggal_penjualan", today);
 
-    if (latestAbsen && latestAbsen.check_in && !latestAbsen.check_out) {
-      currentAbsensiStatus = "Sedang Check-in";
-    } else if (latestAbsen && latestAbsen.check_in && latestAbsen.check_out) {
-      currentAbsensiStatus = "Sudah Check-out";
+      totalPenjualan =
+        penjualanData?.reduce((sum, item) => sum + item.harga_total, 0) || 0;
+
+      // 3. Cek Status Absensi (HANYA PEGAWAI)
+      currentAbsensiStatus = "Belum Check-in";
+      const { data: latestAbsen } = await supabase
+        .from("absensi")
+        .select("check_in, check_out")
+        .eq("pegawai_id", user.id)
+        .order("dibuat_pada", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (latestAbsen && latestAbsen.check_in && !latestAbsen.check_out) {
+        currentAbsensiStatus = "Sedang Check-in";
+      } else if (latestAbsen && latestAbsen.check_in && latestAbsen.check_out) {
+        currentAbsensiStatus = "Sudah Check-out";
+      }
+
+      // 4. Hitung Stok Kritis (DoS <= 7) (HANYA PEGAWAI)
+      // Asumsi kolom calculated_dos dihitung oleh DB
+      const { count: countPegawai, error: kritisError } = await supabase
+        .from("stok_toko")
+        .select("id", { count: "exact", head: true })
+        .lte("calculated_dos", 7);
+
+      kritisCount = countPegawai || 0;
     }
-
-    // 4. Hitung Stok Kritis (DoS <= 7)
-    // Asumsi kolom calculated_dos dihitung oleh DB
-    const { count: kritisCount, error: kritisError } = await supabase
-      .from("stok_toko")
-      .select("id", { count: "exact", head: true })
-      .lte("calculated_dos", 7);
+    // Jika bukan Pegawai (Admin), variabel tetap pada nilai default (0 atau "Tidak Berlaku (Admin)")
 
     setSummary({
       role: userRole,
       userName: userName,
       totalPenjualan: totalPenjualan,
       statusAbsensi: currentAbsensiStatus,
-      stokKritis: kritisCount || 0,
+      stokKritis: kritisCount,
     });
     setLoading(false);
   }, [user]);
