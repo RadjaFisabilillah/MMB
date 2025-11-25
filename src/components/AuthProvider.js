@@ -1,4 +1,4 @@
-// src/components/AuthProvider.js
+// src/components/AuthProvider.js (MODIFIED)
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
       (event, session) => {
         setUser(session?.user ?? null);
         if (event === "SIGNED_OUT") {
-          router.push("/login");
+          router.push("/");
         }
       }
     );
@@ -37,37 +37,25 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     loading,
-    // --- FUNGSI LOGIN DENGAN DEBUGGING KRITIS ---
+    // FIX: HANYA melakukan otentikasi. Tidak melakukan redirect.
     login: async (email, password) => {
-      // Menggunakan nama 'login' agar sesuai dengan panggilan di src/app/page.js
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
-        // Logging error yang spesifik ke konsol browser
         console.error("SUPABASE SIGN-IN ERROR:", error.message);
         return { error };
       }
 
-      // Jika berhasil, redirect
-      if (data.user) {
-        router.push("/dashboard");
-        return {};
-      }
-
-      // Kasus respons tidak terduga
-      return {
-        error: {
-          message: "Respons Auth tidak terduga atau perlu konfirmasi email.",
-        },
-      };
+      // Mengembalikan data auth untuk diproses di halaman Login
+      return { data };
     },
-    // --- AKHIR DEBUGGING ---
 
     signOut: async () => {
       await supabase.auth.signOut();
+      router.push("/");
     },
   };
 

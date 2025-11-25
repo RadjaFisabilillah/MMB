@@ -1,4 +1,4 @@
-// src/app/(auth)/register/page.js
+// src/app/register/page.js (MODIFIED)
 "use client";
 
 import { useState } from "react";
@@ -42,19 +42,15 @@ export default function RegisterPage() {
 
     if (userId) {
       // 2. Buat entri di tabel PEGAWAI (Profil)
-      // KRITIS: Anda harus menetapkan store_id.
-      // Untuk demo, kita asumsikan default store ID (Ganti dengan logika nyata jika multi-toko sudah ada)
-      const VALID_STORE_ID = "043cb5a5-0cbf-4da8-a3cf-4c5ff17ce012";
-
+      // FIX: store_id disetel NULL agar pegawai tidak terikat toko saat registrasi
       const { error: profileError } = await supabase.from("pegawai").insert({
         id: userId,
         nama: name,
         role: "pegawai", // Default role
-        store_id: VALID_STORE_ID, // Wajib untuk RLS!
+        store_id: null, // Pegawai didaftarkan tanpa ikatan toko awal (SESUAI PERMINTAAN)
       });
 
       if (profileError) {
-        // Jika gagal membuat profil, HAPUS akun auth (Pembersihan)
         await supabase.auth.admin.deleteUser(userId);
         setErrorMsg(
           `Pendaftaran gagal (DB Error): ${profileError.message}. Akun Auth dihapus.`
@@ -65,9 +61,8 @@ export default function RegisterPage() {
 
       // 3. Sukses, redirect
       setSuccessMsg("Pendaftaran berhasil! Silakan Login.");
-      router.push("/login");
+      router.push("/"); // Redirect ke halaman utama (Login)
     } else {
-      // Ini mungkin terjadi jika Supabase memerlukan konfirmasi email
       setSuccessMsg(
         "Pendaftaran berhasil! Harap konfirmasi email Anda sebelum login."
       );
@@ -81,6 +76,7 @@ export default function RegisterPage() {
       className="flex min-h-screen items-center justify-center p-4"
       style={{ backgroundColor: "#323232" }}
     >
+      {/* ... (Halaman Register UI) ... */}
       <div
         className="w-full max-w-sm p-8 rounded-xl shadow-2xl"
         style={{ backgroundColor: "#1f1f1f" }}
@@ -152,13 +148,9 @@ export default function RegisterPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm mt-6 text-gray-400">
+        <p className="mt-4 text-center text-sm text-gray-400">
           Sudah punya akun?{" "}
-          <Link
-            href="/login"
-            className="font-semibold"
-            style={{ color: "#FA4EAB" }}
-          >
+          <Link href="/" className="font-semibold" style={{ color: "#FA4EAB" }}>
             Login di sini
           </Link>
         </p>
