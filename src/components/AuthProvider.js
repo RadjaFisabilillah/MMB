@@ -18,10 +18,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Memperoleh sesi dari Supabase saat inisialisasi
   const getInitialSession = useCallback(async () => {
     try {
-      // Pastikan Supabase menginisialisasi sesi dari cookie/storage
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
       setUser(data.session?.user ?? null);
@@ -36,23 +34,21 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     getInitialSession();
 
-    // Listener untuk perubahan state autentikasi (misalnya: login, logout, refresh token)
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         setLoading(false);
 
-        // ✅ PERBAIKAN: Hapus logika router.push("/dashboard") dari sini.
-        // Biarkan src/app/page.js dan Middleware yang menangani redirect ke dashboard.
+        // ✅ PERBAIKAN: Hapus logika router.push("/dashboard") di sini.
+        // Hanya tangani SIGNED_OUT, biarkan page.js yang memicu redirect SIGNED_IN.
         if (event === "SIGNED_OUT") {
-          // Navigasi ke halaman login setelah logout
           router.push("/");
         }
       }
     );
 
-    // --- LOGIKA LOGOUT PAKSA SAAT MENUTUP TAB (PERMINTAAN PENGGUNA) ---
+    // --- LOGIKA LOGOUT PAKSA SAAT MENUTUP TAB ---
     const handleBeforeUnload = async () => {
       await supabase.auth.signOut();
     };
@@ -73,11 +69,13 @@ export const AuthProvider = ({ children }) => {
   }, [router, getInitialSession]);
 
   const login = async (email, password) => {
+    // FIX: login() di sini tidak melakukan redirect.
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) throw error;
+    // Mengembalikan data auth untuk diproses di halaman Login
+    return { data: { user: supabase.auth.getUser()?.user }, error };
   };
 
   const signOut = async () => {
@@ -92,7 +90,11 @@ export const AuthProvider = ({ children }) => {
     signOut,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {!loading && children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {

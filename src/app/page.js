@@ -1,179 +1,258 @@
-// src/app/page.js
+// src/app/page.js (New Dynamic Login Page)
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 export default function LoginPage() {
-  const { user, loading, login, signOut } = useAuth();
-  // Tidak perlu menggunakan useRouter() atau useEffect untuk redirect di sini
-  // karena Middleware sudah menangani redirect utama.
+  const { user, login } = useAuth();
+  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState("pegawai"); // Default
-  const [error, setError] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("pegawai"); // Default Pegawai
+  const [stores, setStores] = useState([]);
+  const [selectedStoreId, setSelectedStoreId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const handleLogin = async (e) => {
+  const isPegawaiLogin = selectedRole === "pegawai";
+
+  // 1. Redirect jika sudah login
+  useEffect(() => {
+    if (user) {
+      // ✅ Perbaikan fungsional: Menggunakan router.replace hanya di sini, bukan di handleSubmit.
+      router.replace("/dashboard");
+    }
+  }, [user, router]);
+
+  // 2. Fetch Daftar Toko untuk Pegawai Dropdown
+  const fetchStores = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("toko")
+      .select("id, nama")
+      .order("nama", { ascending: true });
+
+    if (!error && data && data.length > 0) {
+      setStores(data);
+      setSelectedStoreId(data[0].id); // Set default toko
+    } else if (error) {
+      console.error("Gagal memuat toko:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStores();
+  }, [fetchStores]);
+
+  // 3. Handle Login Submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    setLoading(true);
+    setMessage("");
 
-    setError(null);
-    setIsSubmitting(true);
+    if (isPegawaiLogin && !selectedStoreId) {
+      setMessage("Pilih toko untuk login sebagai Pegawai.");
+      setLoading(false);
+      return;
+    }
 
-    try {
-      // 1. Lakukan autentikasi menggunakan Supabase
-      await login(email, password);
-      // Supabase akan menyimpan sesi dan memicu AuthProvider.
-      // Selanjutnya, Middleware akan menangkap sesi dan mengarahkan ke /dashboard.
+    // Panggil fungsi login standar Supabase
+    const { data: authData, error: authError } = await login(email, password);
 
-      // 2. Verifikasi peran setelah berhasil login (sebelum Middleware redirect)
-      const { data: profile } = await supabase
+    if (authError) {
+      setMessage("Login Gagal: " + authError.message);
+      setLoading(false);
+      return;
+    }
+
+    // Verifikasi Auth Sukses, sekarang Cek/Update Role dan Store
+    const userId = authData.user?.id;
+    if (userId) {
+      // Fetch role yang sebenarnya di DB
+      const { data: profileData, error: profileError } = await supabase
         .from("pegawai")
         .select("role")
-        .eq("email", email)
+        .eq("id", userId)
         .single();
 
-      if (profile && profile.role !== selectedRole) {
-        // Jika peran yang dideklarasikan tidak sesuai, paksa logout
-        setError(
-          "Otentikasi berhasil, tetapi peran yang dipilih tidak sesuai dengan profil Anda."
+      const actualRole = profileData?.role;
+
+      if (profileError) {
+        setMessage("Error saat memverifikasi profil di DB.");
+        await supabase.auth.signOut();
+      } else if (actualRole !== selectedRole) {
+        setMessage(
+          `Gagal: Anda login sebagai ${actualRole.toUpperCase()}, tetapi memilih ${selectedRole.toUpperCase()}.`
         );
-        await signOut();
-      }
-    } catch (err) {
-      if (err.message.includes("Invalid login credentials")) {
-        setError("Email atau Password salah.");
-      } else if (err.message.includes("not found")) {
-        setError("Profil pegawai tidak ditemukan di database.");
+        await supabase.auth.signOut(); // Wajib signOut jika role tidak match
       } else {
-        setError(err.message || "Login gagal. Silakan coba lagi.");
+        // Lakukan Update Store ID hanya jika login sebagai Pegawai
+        if (isPegawaiLogin) {
+          // Update tabel Pegawai dengan store_id yang dipilih
+          const { error: updateError } = await supabase
+            .from("pegawai")
+            .update({ store_id: selectedStoreId })
+            .eq("id", userId);
+
+          if (updateError) {
+            setMessage("Error saat mengikat ke toko. Coba lagi.");
+            await supabase.auth.signOut();
+            setLoading(false);
+            return;
+          }
+        }
+        // Sukses Login: State 'user' akan diperbarui, yang memicu useEffect di atas.
+        // router.replace("/dashboard"); // ❌ LOGIKA ASLI DIHAPUS agar tidak terjadi double redirect
       }
-    } finally {
-      setIsSubmitting(false);
     }
+    setLoading(false);
   };
 
-  if (loading) {
-    return (
-      <main
-        className="flex-grow p-4 pt-10 text-white text-center"
-        style={{ backgroundColor: "#323232" }}
-      >
-        <h1 className="text-3xl font-bold mt-20" style={{ color: "#FA4EAB" }}>
-          Memuat Aplikasi...
-        </h1>
-      </main>
-    );
-  }
-
-  // ✅ PERBAIKAN: Jika user sudah terautentikasi dan loading selesai,
-  // tampilkan pesan redirect (Middleware yang akan melakukan redirect sebenarnya)
   if (user) {
     return (
       <main
-        className="flex-grow p-4 pt-10 text-white text-center"
+        className="flex min-h-screen items-center justify-center p-24"
         style={{ backgroundColor: "#323232" }}
       >
-        <h1 className="text-3xl font-bold mt-20" style={{ color: "#FA4EAB" }}>
-          Mengarahkan ke Dashboard...
-        </h1>
-        <p className="text-center mt-4">Tunggu sebentar...</p>
+        <p className="text-white">Mengarahkan ke Dashboard...</p>
       </main>
     );
   }
 
   return (
     <main
-      className="flex-grow p-4 pt-10 text-white"
+      className="flex min-h-screen flex-col items-center justify-center p-4"
       style={{ backgroundColor: "#323232" }}
     >
-      <h1
-        className="text-3xl font-bold text-center"
-        style={{ color: "#FA4EAB" }}
+      <div
+        className="w-full max-w-sm p-8 rounded-xl shadow-2xl"
+        style={{ backgroundColor: "#1f1f1f" }}
       >
-        Login
-      </h1>
-      <p className="text-center mb-8 text-gray-400">
-        Selamat datang kembali di MMB PWA.
-      </p>
-
-      {error && (
-        <div className="bg-red-700 p-3 rounded-lg text-sm mb-4">{error}</div>
-      )}
-
-      <form onSubmit={handleLogin} className="space-y-4">
-        {/* Input Email */}
-        <div>
-          <label className="block text-sm font-medium text-gray-400">
-            Email
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full p-3 rounded-lg mt-1 text-gray-900 focus:ring-red-500 focus:border-red-500"
-            placeholder="email@example.com"
-          />
-        </div>
-
-        {/* Input Password */}
-        <div>
-          <label className="block text-sm font-medium text-gray-400">
-            Password
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full p-3 rounded-lg mt-1 text-gray-900 focus:ring-red-500 focus:border-red-500"
-            placeholder="********"
-          />
-        </div>
-
-        {/* Pilihan Role */}
-        <div>
-          <label className="block text-sm font-medium text-gray-400">
-            Login Sebagai
-          </label>
-          <select
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
-            className="w-full p-3 rounded-lg mt-1 text-gray-900 focus:ring-red-500 focus:border-red-500"
-          >
-            <option value="pegawai">Pegawai</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-
-        {/* Tombol Login */}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className={`w-full py-3 rounded-lg font-bold transition-colors duration-200 ${
-            isSubmitting
-              ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-              : "bg-red-600 hover:bg-red-700 text-white"
-          }`}
+        <h1
+          className="text-3xl font-bold text-center mb-6"
+          style={{ color: "#FA4EAB" }}
         >
-          {isSubmitting ? "Memproses..." : "Login"}
-        </button>
-      </form>
+          MMB Login
+        </h1>
 
-      <div className="mt-6 text-center">
-        <p className="text-gray-400 text-sm">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* OPSI PILIH ROLE */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300">
+              Login Sebagai
+            </label>
+            <select
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm"
+              style={{ backgroundColor: "#323232", color: "white" }}
+              disabled={loading}
+            >
+              <option value="pegawai">Pegawai</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          {/* OPSI PILIH TOKO (Hanya muncul jika Pegawai) */}
+          {isPegawaiLogin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300">
+                Pilih Toko Jaga
+              </label>
+              <select
+                value={selectedStoreId || ""}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                required={isPegawaiLogin}
+                className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm"
+                style={{ backgroundColor: "#323232", color: "white" }}
+                disabled={loading || stores.length === 0}
+              >
+                {stores.length === 0 && (
+                  <option value="">Memuat Toko...</option>
+                )}
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.nama}
+                  </option>
+                ))}
+              </select>
+              {stores.length === 0 && (
+                <p className="text-xs text-red-400 mt-1">
+                  Tidak ada toko tersedia. Hubungi Admin.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* INPUT EMAIL & PASSWORD */}
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-300"
+            >
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#FA4EAB] focus:border-[#FA4EAB] sm:text-sm"
+              style={{ backgroundColor: "#323232", color: "white" }}
+              disabled={loading}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-300"
+            >
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="mt-1 block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#FA4EAB] focus:border-[#FA4EAB] sm:text-sm"
+              style={{ backgroundColor: "#323232", color: "white" }}
+              disabled={loading}
+            />
+          </div>
+
+          {message && (
+            <p
+              className={`text-sm text-center ${
+                message.includes("Gagal") ? "text-red-400" : "text-green-400"
+              }`}
+            >
+              {message}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#FA4EAB] hover:bg-[#c73e87] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FA4EAB] transition duration-150"
+            disabled={loading}
+          >
+            {loading ? "Memproses..." : "Masuk"}
+          </button>
+        </form>
+
+        <p className="mt-4 text-center text-sm text-gray-400">
           Belum punya akun?{" "}
-          <a
+          <Link
             href="/register"
-            style={{ color: "#FA4EAB" }}
-            className="font-semibold hover:underline"
+            className="font-medium text-[#FA4EAB] hover:text-[#c73e87]"
           >
             Daftar di sini
-          </a>
+          </Link>
         </p>
       </div>
     </main>
