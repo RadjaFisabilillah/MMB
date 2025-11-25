@@ -18,18 +18,22 @@ export default function LoginPage() {
   const [selectedStoreId, setSelectedStoreId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [isRedirecting, setIsRedirecting] = useState(false); // ✅ State baru untuk kontrol redirect
 
   const isPegawaiLogin = selectedRole === "pegawai";
 
-  // 1. Initial Redirect Check
-  useEffect(() => {
-    if (user && !isRedirecting) {
-      // Jika sudah terautentikasi dan belum dalam proses redirect dari form, langsung redirect.
-      setIsRedirecting(true);
-      router.replace("/dashboard");
-    }
-  }, [user, router, isRedirecting]);
+  // ✅ PERBAIKAN KRITIS: Sinkronisasi Redirect. Jika user ada, segera ganti rute.
+  if (user) {
+    // router.replace() di luar useEffect akan dieksekusi secara sinkron
+    router.replace("/dashboard");
+    return (
+      <main
+        className="flex min-h-screen items-center justify-center p-24"
+        style={{ backgroundColor: "#323232" }}
+      >
+        <p className="text-white">Mengarahkan ke Dashboard...</p>
+      </main>
+    );
+  }
 
   // 2. Fetch Daftar Toko untuk Pegawai Dropdown
   const fetchStores = useCallback(async () => {
@@ -72,6 +76,7 @@ export default function LoginPage() {
     }
 
     // Verifikasi Auth Sukses, sekarang Cek/Update Role dan Store
+    // Ambil user dari Supabase Auth secara langsung
     const sessionUser = (await supabase.auth.getUser()).data.user;
     const userId = sessionUser?.id;
 
@@ -110,26 +115,14 @@ export default function LoginPage() {
           }
         }
 
-        // ✅ PERBAIKAN KRITIS: Set state redirect dan biarkan useEffect mengambil alih.
+        // Sukses: Sesi diperbarui. Render loop berikutnya akan memicu if (user) di atas.
         setLoading(false);
-        setIsRedirecting(true);
+        // Karena kita sudah memanggil router.replace di awal komponen, tidak perlu lagi di sini.
         return;
       }
     }
     setLoading(false);
   };
-
-  // Render Redirection Message jika user sudah ada atau proses redirect baru dimulai
-  if (user || loading || isRedirecting) {
-    return (
-      <main
-        className="flex min-h-screen items-center justify-center p-24"
-        style={{ backgroundColor: "#323232" }}
-      >
-        <p className="text-white">Mengarahkan ke Dashboard...</p>
-      </main>
-    );
-  }
 
   return (
     <main
