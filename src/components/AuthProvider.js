@@ -1,7 +1,13 @@
-// src/components/AuthProvider.js (MODIFIED)
+// src/components/AuthProvider.js
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
@@ -12,58 +18,86 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    // Ambil sesi awal
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+  // Memperoleh sesi dari Supabase saat inisialisasi
+  const getInitialSession = useCallback(async () => {
+    try {
+      // Pastikan Supabase menginisialisasi sesi dari cookie/storage
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      setUser(data.session?.user ?? null);
+    } catch (error) {
+      console.error("Error getting initial session:", error);
+      setUser(null);
+    } finally {
       setLoading(false);
-    });
+    }
+  }, []);
 
-    // Dengarkan perubahan auth
+  useEffect(() => {
+    getInitialSession();
+
+    // Listener untuk perubahan state autentikasi (misalnya: login, logout, refresh token)
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setUser(session?.user ?? null);
-        if (event === "SIGNED_OUT") {
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        setLoading(false);
+
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          // Navigasi ke dashboard setelah login/refresh token
+          router.push("/dashboard");
+        } else if (event === "SIGNED_OUT") {
+          // Navigasi ke halaman login setelah logout
           router.push("/");
         }
       }
     );
 
-    return () => {
-      authListener?.subscription.unsubscribe();
+    // --- LOGIKA LOGOUT PAKSA SAAT MENUTUP TAB (PERMINTAAN PENGGUNA) ---
+    // Peringatan: Ini tidak 100% andal di semua browser.
+    const handleBeforeUnload = async () => {
+      // Memanggil fungsi logout
+      await supabase.auth.signOut();
     };
-  }, [router]);
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    }
+    // --- AKHIR LOGIKA LOGOUT PAKSA ---
+
+    return () => {
+      if (authListener) {
+        authListener.subscription.unsubscribe();
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      }
+    };
+  }, [router, getInitialSession]);
+
+  const login = async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+  };
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("Error signing out:", error);
+  };
 
   const value = {
     user,
     loading,
-    // FIX: HANYA melakukan otentikasi. Tidak melakukan redirect.
-    login: async (email, password) => {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        console.error("SUPABASE SIGN-IN ERROR:", error.message);
-        return { error };
-      }
-
-      // Mengembalikan data auth untuk diproses di halaman Login
-      return { data };
-    },
-
-    signOut: async () => {
-      await supabase.auth.signOut();
-      router.push("/");
-    },
+    login,
+    signOut,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  return useContext(AuthContext);
+};
