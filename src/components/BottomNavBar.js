@@ -1,9 +1,7 @@
 // src/components/BottomNavBar.js
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
 // Import ikon yang dibutuhkan
 import {
   FaHome,
@@ -14,8 +12,6 @@ import {
   FaCheckCircle,
   FaStore,
 } from "react-icons/fa";
-import { useAuth } from "@/components/AuthProvider";
-import { supabase } from "@/lib/supabaseClient";
 
 // Definisi item navigasi dasar untuk Pegawai
 const navItemsPegawai = [
@@ -35,50 +31,15 @@ const navItemsAdmin = [
   { href: "/profil", icon: FaUser, label: "Profil" },
 ];
 
-export default function BottomNavBar() {
+// ✅ PERUBAHAN: Menerima userRole dan loadingRole sebagai props
+export default function BottomNavBar({ userRole, loadingRole }) {
   const pathname = usePathname();
-  const { user } = useAuth();
-  const [userRole, setUserRole] = useState(null);
-  const [loadingRole, setLoadingRole] = useState(true);
 
-  // Fungsi untuk mengambil peran pengguna
-  const fetchUserRole = useCallback(async () => {
-    if (!user) {
-      setUserRole(null);
-      setLoadingRole(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("pegawai")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profile) {
-      setUserRole(profile.role);
-    } else {
-      // Fallback defensif: Jika profil tidak ditemukan, anggap sebagai Pegawai default
-      // Ini mencegah crash saat navigasi Admin dimuat
-      setUserRole("pegawai");
-    }
-    setLoadingRole(false);
-  }, [user]);
-
-  useEffect(() => {
-    fetchUserRole();
-  }, [fetchUserRole]);
-
-  // Tentukan item navigasi akhir berdasarkan peran
+  // Tentukan item navigasi akhir berdasarkan peran yang diterima
   const finalNavItems = userRole === "admin" ? navItemsAdmin : navItemsPegawai;
 
   // Jangan merender apapun jika masih memuat data peran
-  if (loadingRole) {
-    return null;
-  }
-
-  // Jangan merender jika tidak ada user
-  if (!user) {
+  if (loadingRole || !userRole) {
     return null;
   }
 
@@ -89,19 +50,13 @@ export default function BottomNavBar() {
     >
       {finalNavItems.map((item) => {
         // Logika untuk menentukan tombol aktif
-        // Menggunakan pathname.startsWith untuk rute Admin/verifikasi-izin/page.js
         const isActive =
           pathname.startsWith(item.href) &&
           (item.href !== "/dashboard" || pathname === "/dashboard");
         const IconComponent = item.icon;
 
-        // ✅ PERBAIKAN KRITIS: Check defensif untuk mencegah React Error #300
-        if (typeof IconComponent !== "function") {
-          console.error(
-            `Ikon untuk rute ${item.href} tidak ditemukan atau bukan komponen React.`
-          );
-          return null; // Hindari crash dengan merender null
-        }
+        // Pemeriksaan defensif masih diperlukan, meskipun crash seharusnya hilang
+        if (typeof IconComponent !== "function") return null;
 
         return (
           <Link href={item.href} key={item.href} className="flex-1 text-center">
@@ -113,7 +68,6 @@ export default function BottomNavBar() {
                 borderColor: isActive ? "#FA4EAB" : "transparent",
               }}
             >
-              {/* Render komponen ikon */}
               <IconComponent className="text-2xl" />
               <span
                 className="text-xs font-medium"

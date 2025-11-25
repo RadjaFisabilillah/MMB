@@ -11,7 +11,8 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({
-    role: "Memuat...",
+    role: "Memuat...", // Kita akan gunakan ini sebagai state sementara
+    userName: "Pengguna", // Default
     totalPenjualan: 0,
     statusAbsensi: "N/A",
     stokKritis: 0,
@@ -34,11 +35,11 @@ export default function DashboardPage() {
     const userName = profile?.nama || "Pengguna";
 
     // Cek apakah pengguna adalah Pegawai atau Admin
-    const isPegawai = userRole !== "admin"; // ✅ LOGIKA PERBAIKAN: Admin tidak menjalankan kueri RLS-sensitif
+    const isPegawai = userRole !== "admin";
 
     let totalPenjualan = 0;
     let kritisCount = 0;
-    let currentAbsensiStatus = "Tidak Berlaku (Admin)"; // Default untuk Admin
+    let currentAbsensiStatus = "Tidak Berlaku (Admin)";
 
     if (isPegawai) {
       // 2. Ambil Total Penjualan Hari Ini (HANYA PEGAWAI)
@@ -68,7 +69,6 @@ export default function DashboardPage() {
       }
 
       // 4. Hitung Stok Kritis (DoS <= 7) (HANYA PEGAWAI)
-      // Asumsi kolom calculated_dos dihitung oleh DB
       const { count: countPegawai, error: kritisError } = await supabase
         .from("stok_toko")
         .select("id", { count: "exact", head: true })
@@ -76,10 +76,9 @@ export default function DashboardPage() {
 
       kritisCount = countPegawai || 0;
     }
-    // Jika bukan Pegawai (Admin), variabel tetap pada nilai default (0 atau "Tidak Berlaku (Admin)")
 
     setSummary({
-      role: userRole,
+      role: userRole, // ✅ Sekarang role selalu ada
       userName: userName,
       totalPenjualan: totalPenjualan,
       statusAbsensi: currentAbsensiStatus,
@@ -195,7 +194,8 @@ export default function DashboardPage() {
         <span className="font-semibold uppercase">{summary.role}</span>
       </p>
 
-      <BottomNavBar />
+      {/* ✅ PERBAIKAN: Mengirim role dan status loading ke BottomNavBar */}
+      <BottomNavBar userRole={summary.role} loadingRole={loading} />
     </main>
   );
 }
