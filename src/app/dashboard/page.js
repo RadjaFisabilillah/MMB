@@ -11,7 +11,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({
-    role: null, // ✅ Dibuat null agar BottomNavBar tahu ini sedang loading
+    role: "", // ✅ Dibuat string kosong agar BottomNavBar defensif
     userName: "Pengguna",
     totalPenjualan: 0,
     statusAbsensi: "N/A",
@@ -31,7 +31,7 @@ export default function DashboardPage() {
       .eq("id", user.id)
       .single();
 
-    const userRole = profile?.role || "pegawai"; // Pastikan selalu ada string role
+    const userRole = profile?.role || "pegawai"; // Pastikan selalu ada string role 'pegawai'
     const userName = profile?.nama || "Pengguna";
 
     // Cek apakah pengguna adalah Pegawai atau Admin
